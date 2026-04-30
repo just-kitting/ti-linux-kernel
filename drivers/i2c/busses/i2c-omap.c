@@ -266,6 +266,8 @@ static const u8 reg_map_ip_v2[] = {
 };
 
 static int omap_i2c_xfer_data(struct omap_i2c_dev *omap);
+static void omap_i2c_set_master_mode(struct omap_i2c_dev *omap);
+static void omap_i2c_restore_slave_listen(struct omap_i2c_dev *omap);
 
 static inline void omap_i2c_write_reg(struct omap_i2c_dev *omap,
 				      int reg, u16 val)
