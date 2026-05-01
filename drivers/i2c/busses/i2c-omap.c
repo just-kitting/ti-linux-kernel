@@ -897,8 +897,6 @@ static void omap_i2c_set_slave_mode(struct omap_i2c_dev *omap)
 
 static void omap_i2c_slave_init_fifos(struct omap_i2c_dev *omap)
 {
-	u16 buf = 0;
-
 	if (!omap->fifo_size)
 		return;
 
@@ -906,8 +904,8 @@ static void omap_i2c_slave_init_fifos(struct omap_i2c_dev *omap)
 	 * In slave mode, keep both FIFO thresholds at 1 byte and clear
 	 * any stale state before listening again.
 	 */
-	buf |= OMAP_I2C_BUF_TXFIF_CLR | OMAP_I2C_BUF_RXFIF_CLR;
-	omap_i2c_write_reg(omap, OMAP_I2C_BUF_REG, buf);
+	omap_i2c_resize_fifo(omap, 1, false);
+	omap_i2c_resize_fifo(omap, 1, true);
 }
 
 static void omap_i2c_restore_slave_listen(struct omap_i2c_dev *omap)
