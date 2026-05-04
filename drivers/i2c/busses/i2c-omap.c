@@ -812,8 +812,10 @@ omap_i2c_xfer_common(struct i2c_adapter *adap, struct i2c_msg msgs[], int num,
 	if (r < 0)
 		goto out;
 
-	if (omap->slave)
+	if (omap->slave) {
+		omap_i2c_slave_log_state(omap, "master-enter", 0);
 		omap_i2c_set_master_mode(omap);
+	}
 
 	r = omap_i2c_wait_for_bb(omap);
 	if (r < 0)
@@ -1357,13 +1359,20 @@ omap_i2c_isr_thread(int this_irq, void *dev_id)
 {
 	int ret;
 	struct omap_i2c_dev *omap = dev_id;
+	u16 con;
+	u16 stat;
 
-	if (omap->slave &&
-	    !(omap_i2c_read_reg(omap, OMAP_I2C_CON_REG) & OMAP_I2C_CON_MST)) {
+	con = omap_i2c_read_reg(omap, OMAP_I2C_CON_REG);
+	if (omap->slave && !(con & OMAP_I2C_CON_MST)) {
 		ret = omap_i2c_slave_irq(omap);
 		if (ret != -EAGAIN)
 			dev_dbg(omap->dev, "slave irq exit %d\n", ret);
 		return IRQ_HANDLED;
+	}
+
+	if (omap->slave) {
+		stat = omap_i2c_read_reg(omap, OMAP_I2C_STAT_REG);
+		omap_i2c_slave_log_state(omap, "isr-master", stat);
 	}
 
 	ret = omap_i2c_xfer_data(omap);
