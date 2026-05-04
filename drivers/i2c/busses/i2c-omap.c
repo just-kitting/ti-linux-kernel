@@ -270,6 +270,8 @@ static int omap_i2c_xfer_data(struct omap_i2c_dev *omap);
 static void omap_i2c_set_master_mode(struct omap_i2c_dev *omap);
 static void omap_i2c_restore_slave_listen(struct omap_i2c_dev *omap);
 static void omap_i2c_slave_init_fifos(struct omap_i2c_dev *omap);
+static void omap_i2c_slave_log_state(struct omap_i2c_dev *omap, const char *tag,
+				     u16 stat);
 
 static inline void omap_i2c_write_reg(struct omap_i2c_dev *omap,
 				      int reg, u16 val)
