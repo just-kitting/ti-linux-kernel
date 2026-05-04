@@ -901,7 +901,14 @@ static void omap_i2c_set_slave_mode(struct omap_i2c_dev *omap)
 	u16 con;
 
 	con = omap_i2c_read_reg(omap, OMAP_I2C_CON_REG);
-	con &= ~OMAP_I2C_CON_MST;
+	/*
+	 * Do not carry master-only transfer state into slave listen mode.
+	 * In particular, stale TRX state can leak the previous master
+	 * transfer direction into subsequent slave transactions.
+	 */
+	con &= ~(OMAP_I2C_CON_MST | OMAP_I2C_CON_TRX |
+		 OMAP_I2C_CON_STT | OMAP_I2C_CON_STP |
+		 OMAP_I2C_CON_RM  | OMAP_I2C_CON_STB);
 	omap_i2c_write_reg(omap, OMAP_I2C_CON_REG, con);
 }
 
