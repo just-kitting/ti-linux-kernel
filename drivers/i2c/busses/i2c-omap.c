@@ -682,6 +682,8 @@ static int omap_i2c_xfer_msg(struct i2c_adapter *adap,
 	omap_i2c_resize_fifo(omap, msg->len, omap->receiver);
 
 	omap_i2c_write_reg(omap, OMAP_I2C_SA_REG, msg->addr);
+	if (omap->slave && msg->addr == omap->slave->addr)
+		omap_i2c_slave_log_state(omap, "xfer-msg", 0);
 
 	/* REVISIT: Could the STB bit of I2C_CON be used with probing? */
 	omap->buf = msg->buf;
@@ -936,11 +938,14 @@ static void omap_i2c_slave_log_state(struct omap_i2c_dev *omap, const char *tag,
 {
 	u16 con = omap_i2c_read_reg(omap, OMAP_I2C_CON_REG);
 	u16 bufstat = omap_i2c_read_reg(omap, OMAP_I2C_BUFSTAT_REG);
+	u16 ie = omap_i2c_read_reg(omap, OMAP_I2C_IE_REG);
+	u16 oa = omap_i2c_read_reg(omap, OMAP_I2C_OA_REG);
+	u16 sa = omap_i2c_read_reg(omap, OMAP_I2C_SA_REG);
 
 	dev_info_ratelimited(omap->dev,
-			     "slave %s stat=%#04x con=%#04x bufstat=%#04x read=%u threshold=%u\n",
-			     tag, stat, con, bufstat, omap->slave_read,
-			     omap->threshold);
+			     "slave %s stat=%#04x con=%#04x ie=%#04x oa=%#04x sa=%#04x bufstat=%#04x read=%u threshold=%u\n",
+			     tag, stat, con, ie, oa, sa, bufstat,
+			     omap->slave_read, omap->threshold);
 }
 
 static void omap_i2c_slave_tx(struct omap_i2c_dev *omap, u16 stat, u8 *value)
