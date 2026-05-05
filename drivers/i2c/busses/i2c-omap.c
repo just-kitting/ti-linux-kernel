@@ -216,6 +216,7 @@ struct omap_i2c_dev {
 	u16			westate;
 	u16			errata;
 	bool			slave_read;
+	bool			slave_write;
 	struct mux_state	*mux_state;
 };
 
@@ -930,6 +931,8 @@ static void omap_i2c_restore_slave_listen(struct omap_i2c_dev *omap)
 	if (!omap->slave)
 		return;
 
+	omap->slave_read = false;
+	omap->slave_write = false;
 	omap_i2c_slave_init_fifos(omap);
 	omap_i2c_write_reg(omap, OMAP_I2C_OA_REG, omap->slave->addr);
 	omap_i2c_set_slave_mode(omap);
@@ -1317,8 +1320,12 @@ static int omap_i2c_slave_irq(struct omap_i2c_dev *omap)
 						&value);
 				omap->slave_read = false;
 			}
-			i2c_slave_event(omap->slave, I2C_SLAVE_WRITE_REQUESTED,
-					&value);
+			if (!omap->slave_write) {
+				i2c_slave_event(omap->slave,
+						I2C_SLAVE_WRITE_REQUESTED,
+						&value);
+				omap->slave_write = true;
+			}
 			value = omap_i2c_read_reg(omap, OMAP_I2C_DATA_REG);
 			i2c_slave_event(omap->slave, I2C_SLAVE_WRITE_RECEIVED,
 					&value);
@@ -1327,6 +1334,7 @@ static int omap_i2c_slave_irq(struct omap_i2c_dev *omap)
 		}
 
 		if (stat & (OMAP_I2C_STAT_XRDY | OMAP_I2C_STAT_XUDF)) {
+			omap->slave_write = false;
 			omap_i2c_slave_tx(omap, stat, &value);
 			continue;
 		}
@@ -1336,6 +1344,7 @@ static int omap_i2c_slave_irq(struct omap_i2c_dev *omap)
 				i2c_slave_event(omap->slave, I2C_SLAVE_STOP,
 						&value);
 				omap->slave_read = false;
+				omap->slave_write = false;
 			}
 			omap_i2c_ack_stat(omap, OMAP_I2C_STAT_ARDY);
 			continue;
@@ -1347,6 +1356,7 @@ static int omap_i2c_slave_irq(struct omap_i2c_dev *omap)
 						&value);
 				omap->slave_read = false;
 			}
+			omap->slave_write = false;
 			omap_i2c_ack_stat(omap, OMAP_I2C_STAT_NACK);
 			continue;
 		}
