@@ -1293,12 +1293,14 @@ static int omap_i2c_xfer_data(struct omap_i2c_dev *omap)
 static int omap_i2c_slave_irq(struct omap_i2c_dev *omap)
 {
 	u16 bits;
+	u16 raw_stat;
 	u16 stat;
 	u8 value = 0;
 
 	do {
 		bits = omap_i2c_read_reg(omap, OMAP_I2C_IE_REG);
-		stat = omap_i2c_read_reg(omap, OMAP_I2C_STAT_REG);
+		raw_stat = omap_i2c_read_reg(omap, OMAP_I2C_STAT_REG);
+		stat = raw_stat;
 		stat &= bits;
 
 		if (!stat)
@@ -1330,8 +1332,11 @@ static int omap_i2c_slave_irq(struct omap_i2c_dev *omap)
 		}
 
 		if (stat & OMAP_I2C_STAT_ARDY) {
-			i2c_slave_event(omap->slave, I2C_SLAVE_STOP, &value);
-			omap->slave_read = false;
+			if (!(raw_stat & OMAP_I2C_STAT_BB)) {
+				i2c_slave_event(omap->slave, I2C_SLAVE_STOP,
+						&value);
+				omap->slave_read = false;
+			}
 			omap_i2c_ack_stat(omap, OMAP_I2C_STAT_ARDY);
 			continue;
 		}
