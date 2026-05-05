@@ -958,7 +958,7 @@ static void omap_i2c_slave_log_state(struct omap_i2c_dev *omap, const char *tag,
 			     omap->slave_read, omap->threshold);
 }
 
-static void omap_i2c_slave_tx(struct omap_i2c_dev *omap, u16 stat, u8 *value)
+static void omap_i2c_slave_tx_byte(struct omap_i2c_dev *omap, u16 stat, u8 *value)
 {
 	if (!omap->slave_read) {
 		i2c_slave_event(omap->slave, I2C_SLAVE_READ_REQUESTED, value);
@@ -968,7 +968,24 @@ static void omap_i2c_slave_tx(struct omap_i2c_dev *omap, u16 stat, u8 *value)
 	}
 
 	omap_i2c_write_reg(omap, OMAP_I2C_DATA_REG, *value);
-	omap_i2c_ack_stat(omap, stat & (OMAP_I2C_STAT_XRDY | OMAP_I2C_STAT_XUDF));
+	omap_i2c_ack_stat(omap, stat);
+}
+
+static void omap_i2c_slave_tx(struct omap_i2c_dev *omap, u16 stat, u8 *value)
+{
+	/*
+	 * When the controller reports XUDF and XRDY together at the start of a
+	 * slave read, it has room for two TX bytes. Service both slots so the
+	 * first meaningful response byte is not lost to an initial underflow.
+	 */
+	if ((stat & OMAP_I2C_STAT_XUDF) && (stat & OMAP_I2C_STAT_XRDY)) {
+		omap_i2c_slave_tx_byte(omap, OMAP_I2C_STAT_XUDF, value);
+		omap_i2c_slave_tx_byte(omap, OMAP_I2C_STAT_XRDY, value);
+		return;
+	}
+
+	omap_i2c_slave_tx_byte(omap, stat & (OMAP_I2C_STAT_XRDY |
+					     OMAP_I2C_STAT_XUDF), value);
 }
 
 static inline void i2c_omap_errata_i207(struct omap_i2c_dev *omap, u16 stat)
