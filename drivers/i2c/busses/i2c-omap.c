@@ -958,13 +958,24 @@ static void omap_i2c_slave_log_state(struct omap_i2c_dev *omap, const char *tag,
 			     omap->slave_read, omap->threshold);
 }
 
+static void omap_i2c_slave_log_tx(struct omap_i2c_dev *omap, const char *tag,
+				  u16 stat, u8 value)
+{
+	dev_info_ratelimited(omap->dev,
+			     "slave %s stat=%#04x value=%#02x read=%u write=%u\n",
+			     tag, stat, value, omap->slave_read,
+			     omap->slave_write);
+}
+
 static void omap_i2c_slave_tx_byte(struct omap_i2c_dev *omap, u16 stat, u8 *value)
 {
 	if (!omap->slave_read) {
 		i2c_slave_event(omap->slave, I2C_SLAVE_READ_REQUESTED, value);
 		omap->slave_read = true;
+		omap_i2c_slave_log_tx(omap, "tx-requested", stat, *value);
 	} else {
 		i2c_slave_event(omap->slave, I2C_SLAVE_READ_PROCESSED, value);
+		omap_i2c_slave_log_tx(omap, "tx-processed", stat, *value);
 	}
 
 	omap_i2c_write_reg(omap, OMAP_I2C_DATA_REG, *value);
