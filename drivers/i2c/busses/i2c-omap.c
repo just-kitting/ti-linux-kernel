@@ -999,6 +999,15 @@ static void omap_i2c_slave_tx(struct omap_i2c_dev *omap, u16 stat, u8 *value)
 					     OMAP_I2C_STAT_XUDF), value);
 }
 
+static void omap_i2c_slave_prime_read(struct omap_i2c_dev *omap, u16 stat,
+				      u8 *value)
+{
+	if (omap->slave_read)
+		return;
+
+	omap_i2c_slave_tx_byte(omap, stat, value);
+}
+
 static inline void i2c_omap_errata_i207(struct omap_i2c_dev *omap, u16 stat)
 {
 	/*
@@ -1339,8 +1348,22 @@ static int omap_i2c_slave_irq(struct omap_i2c_dev *omap)
 
 		omap_i2c_slave_log_state(omap, "irq", stat);
 
-		if (stat & OMAP_I2C_STAT_AAS)
+		if (stat & OMAP_I2C_STAT_AAS) {
+			/*
+			 * On a repeated-start read following a write phase, the
+			 * controller can consume the first reply slot before it
+			 * raises XUDF/XRDY. Prime that first byte on the read
+			 * address match so the initiator does not see a
+			 * synthetic leading 0x00.
+			 */
+			if (omap->slave_write && !(stat & OMAP_I2C_STAT_RRDY)) {
+				omap->slave_write = false;
+				omap_i2c_slave_prime_read(omap,
+							  OMAP_I2C_STAT_AAS,
+							  &value);
+			}
 			omap_i2c_ack_stat(omap, OMAP_I2C_STAT_AAS);
+		}
 
 		if (stat & OMAP_I2C_STAT_RRDY) {
 			if (omap->slave_read) {
