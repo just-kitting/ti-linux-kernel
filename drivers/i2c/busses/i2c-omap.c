@@ -195,6 +195,7 @@ struct omap_i2c_dev {
 	u8			*buf;
 	u8			*regs;
 	size_t			buf_len;
+	struct i2c_msg		*msg;
 	struct i2c_adapter	adapter;
 	struct i2c_client	*slave;
 	u8			threshold;
@@ -217,6 +218,9 @@ struct omap_i2c_dev {
 	u16			errata;
 	bool			slave_read;
 	bool			slave_write;
+	bool			recv_len;
+	u8			recv_len_extra;
+	int			recv_len_err;
 	struct mux_state	*mux_state;
 };
 
@@ -673,6 +677,7 @@ static int omap_i2c_xfer_msg(struct i2c_adapter *adap,
 {
 	struct omap_i2c_dev *omap = i2c_get_adapdata(adap);
 	unsigned long time_left;
+	size_t xfer_len = msg->len;
 	u16 w;
 	int ret;
 
@@ -680,15 +685,22 @@ static int omap_i2c_xfer_msg(struct i2c_adapter *adap,
 		msg->addr, msg->len, msg->flags, stop);
 
 	omap->receiver = !!(msg->flags & I2C_M_RD);
-	omap_i2c_resize_fifo(omap, msg->len, omap->receiver);
+	omap->recv_len = omap->receiver && !!(msg->flags & I2C_M_RECV_LEN);
+	omap->recv_len_extra = omap->recv_len ? (msg->len - 1) : 0;
+	omap->recv_len_err = 0;
+	if (omap->recv_len)
+		xfer_len += I2C_SMBUS_BLOCK_MAX;
+
+	omap_i2c_resize_fifo(omap, xfer_len, omap->receiver);
 
 	omap_i2c_write_reg(omap, OMAP_I2C_SA_REG, msg->addr);
 	if (omap->slave && msg->addr == omap->slave->addr)
 		omap_i2c_slave_log_state(omap, "xfer-msg", 0);
 
 	/* REVISIT: Could the STB bit of I2C_CON be used with probing? */
+	omap->msg = msg;
 	omap->buf = msg->buf;
-	omap->buf_len = msg->len;
+	omap->buf_len = xfer_len;
 
 	/* make sure writes to omap->buf_len are ordered */
 	barrier();
@@ -768,8 +780,20 @@ static int omap_i2c_xfer_msg(struct i2c_adapter *adap,
 	if (time_left == 0) {
 		omap_i2c_reset(omap);
 		__omap_i2c_init(omap);
+		omap->msg = NULL;
+		omap->recv_len = false;
 		return -ETIMEDOUT;
 	}
+
+	if (unlikely(omap->recv_len_err)) {
+		ret = omap->recv_len_err;
+		omap->msg = NULL;
+		omap->recv_len = false;
+		return ret;
+	}
+
+	omap->msg = NULL;
+	omap->recv_len = false;
 
 	if (likely(!omap->cmd_err))
 		return 0;
@@ -871,7 +895,8 @@ omap_i2c_xfer_polling(struct i2c_adapter *adap, struct i2c_msg msgs[], int num)
 static u32
 omap_i2c_func(struct i2c_adapter *adap)
 {
-	return I2C_FUNC_I2C | (I2C_FUNC_SMBUS_EMUL & ~I2C_FUNC_SMBUS_QUICK) |
+	return I2C_FUNC_I2C |
+	       (I2C_FUNC_SMBUS_EMUL_ALL & ~I2C_FUNC_SMBUS_QUICK) |
 	       I2C_FUNC_PROTOCOL_MANGLING | I2C_FUNC_SLAVE;
 }
 
@@ -1149,6 +1174,25 @@ static void omap_i2c_receive_data(struct omap_i2c_dev *omap, u8 num_bytes,
 		w = omap_i2c_read_reg(omap, OMAP_I2C_DATA_REG);
 		*omap->buf++ = w;
 		omap->buf_len--;
+
+		if (omap->recv_len && omap->msg &&
+		    omap->buf == omap->msg->buf + 1) {
+			u8 block_len = w & 0xff;
+			size_t remaining;
+
+			if (block_len == 0 || block_len > I2C_SMBUS_BLOCK_MAX) {
+				omap->recv_len_err = -EPROTO;
+				omap->recv_len = false;
+				continue;
+			}
+
+			remaining = block_len + omap->recv_len_extra;
+			omap->msg->len = 1 + remaining;
+			omap->buf_len = remaining;
+			omap_i2c_resize_fifo(omap, remaining, true);
+			omap_i2c_write_reg(omap, OMAP_I2C_CNT_REG, remaining);
+			omap->recv_len = false;
+		}
 
 		/*
 		 * Data reg in 2430, omap3 and
