@@ -1165,10 +1165,11 @@ static int errata_omap3_i462(struct omap_i2c_dev *omap)
 	return 0;
 }
 
-static void omap_i2c_receive_data(struct omap_i2c_dev *omap, u8 num_bytes,
+static bool omap_i2c_receive_data(struct omap_i2c_dev *omap, u8 num_bytes,
 		bool is_rdr)
 {
 	u16		w;
+	bool		recv_len_reprogrammed = false;
 
 	while (num_bytes--) {
 		w = omap_i2c_read_reg(omap, OMAP_I2C_DATA_REG);
@@ -1192,6 +1193,8 @@ static void omap_i2c_receive_data(struct omap_i2c_dev *omap, u8 num_bytes,
 			omap_i2c_resize_fifo(omap, remaining, true);
 			omap_i2c_write_reg(omap, OMAP_I2C_CNT_REG, remaining);
 			omap->recv_len = false;
+			recv_len_reprogrammed = true;
+			break;
 		}
 
 		/*
@@ -1203,6 +1206,8 @@ static void omap_i2c_receive_data(struct omap_i2c_dev *omap, u8 num_bytes,
 			omap->buf_len--;
 		}
 	}
+
+	return recv_len_reprogrammed;
 }
 
 static int omap_i2c_transmit_data(struct omap_i2c_dev *omap, u8 num_bytes,
@@ -1300,8 +1305,11 @@ static int omap_i2c_xfer_data(struct omap_i2c_dev *omap)
 
 		if (stat & OMAP_I2C_STAT_RDR) {
 			u8 num_bytes = 1;
+			bool recv_len_reprogrammed;
 
-			if (omap->fifo_size)
+			if (omap->recv_len)
+				num_bytes = 1;
+			else if (omap->fifo_size)
 				num_bytes = omap->buf_len;
 
 			if (omap->errata & I2C_OMAP_ERRATA_I207) {
@@ -1310,19 +1318,32 @@ static int omap_i2c_xfer_data(struct omap_i2c_dev *omap)
 					OMAP_I2C_BUFSTAT_REG) >> 8) & 0x3F;
 			}
 
-			omap_i2c_receive_data(omap, num_bytes, true);
+			recv_len_reprogrammed =
+				omap_i2c_receive_data(omap, num_bytes, true);
 			omap_i2c_ack_stat(omap, OMAP_I2C_STAT_RDR);
+			if (recv_len_reprogrammed) {
+				err = -EAGAIN;
+				break;
+			}
 			continue;
 		}
 
 		if (stat & OMAP_I2C_STAT_RRDY) {
 			u8 num_bytes = 1;
+			bool recv_len_reprogrammed;
 
-			if (omap->threshold)
+			if (omap->recv_len)
+				num_bytes = 1;
+			else if (omap->threshold)
 				num_bytes = omap->threshold;
 
-			omap_i2c_receive_data(omap, num_bytes, false);
+			recv_len_reprogrammed =
+				omap_i2c_receive_data(omap, num_bytes, false);
 			omap_i2c_ack_stat(omap, OMAP_I2C_STAT_RRDY);
+			if (recv_len_reprogrammed) {
+				err = -EAGAIN;
+				break;
+			}
 			continue;
 		}
 
