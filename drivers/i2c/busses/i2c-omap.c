@@ -1184,7 +1184,8 @@ static bool omap_i2c_receive_data(struct omap_i2c_dev *omap, u8 num_bytes,
 			if (block_len == 0 || block_len > I2C_SMBUS_BLOCK_MAX) {
 				omap->recv_len_err = -EPROTO;
 				omap->recv_len = false;
-				continue;
+				recv_len_reprogrammed = true;
+				break;
 			}
 
 			remaining = block_len + omap->recv_len_extra;
