@@ -1253,11 +1253,26 @@ static int omap_i2c_xfer_data(struct omap_i2c_dev *omap)
 		stat = omap_i2c_read_reg(omap, OMAP_I2C_STAT_REG);
 		stat &= bits;
 
-		/* If we're in receiver mode, ignore XDR/XRDY */
-		if (omap->receiver)
-			stat &= ~(OMAP_I2C_STAT_XDR | OMAP_I2C_STAT_XRDY);
-		else
-			stat &= ~(OMAP_I2C_STAT_RDR | OMAP_I2C_STAT_RRDY);
+		/*
+		 * Only service data-ready interrupts for the active transfer
+		 * direction. Clear stale opposite-direction status so it cannot
+		 * retrigger the threaded IRQ after we intentionally ignore it.
+		 */
+		if (omap->receiver) {
+			u16 tx_stat = stat & (OMAP_I2C_STAT_XDR |
+					      OMAP_I2C_STAT_XRDY);
+
+			if (tx_stat)
+				omap_i2c_ack_stat(omap, tx_stat);
+			stat &= ~tx_stat;
+		} else {
+			u16 rx_stat = stat & (OMAP_I2C_STAT_RDR |
+					      OMAP_I2C_STAT_RRDY);
+
+			if (rx_stat)
+				omap_i2c_ack_stat(omap, rx_stat);
+			stat &= ~rx_stat;
+		}
 
 		if (!stat) {
 			/* my work here is done */
@@ -1347,7 +1362,7 @@ static int omap_i2c_xfer_data(struct omap_i2c_dev *omap)
 			continue;
 		}
 
-		if (stat & OMAP_I2C_STAT_XDR) {
+		if (!omap->receiver && (stat & OMAP_I2C_STAT_XDR)) {
 			u8 num_bytes = 1;
 			int ret;
 
@@ -1362,7 +1377,7 @@ static int omap_i2c_xfer_data(struct omap_i2c_dev *omap)
 			continue;
 		}
 
-		if (stat & OMAP_I2C_STAT_XRDY) {
+		if (!omap->receiver && (stat & OMAP_I2C_STAT_XRDY)) {
 			u8 num_bytes = 1;
 			int ret;
 
