@@ -1303,14 +1303,7 @@ static int omap_i2c_xfer_data(struct omap_i2c_dev *omap)
 			omap_i2c_ack_stat(omap, OMAP_I2C_STAT_AL);
 		}
 
-		/*
-		 * ProDB0017052: Clear ARDY bit twice
-		 */
-		if (stat & OMAP_I2C_STAT_ARDY)
-			omap_i2c_ack_stat(omap, OMAP_I2C_STAT_ARDY);
-
-		if (stat & (OMAP_I2C_STAT_ARDY | OMAP_I2C_STAT_NACK |
-					OMAP_I2C_STAT_AL)) {
+		if (stat & (OMAP_I2C_STAT_NACK | OMAP_I2C_STAT_AL)) {
 			omap_i2c_ack_stat(omap, (OMAP_I2C_STAT_RRDY |
 						OMAP_I2C_STAT_RDR |
 						OMAP_I2C_STAT_XRDY |
@@ -1361,6 +1354,21 @@ static int omap_i2c_xfer_data(struct omap_i2c_dev *omap)
 				break;
 			}
 			continue;
+		}
+
+		/*
+		 * ProDB0017052: Clear ARDY bit twice. Handle it after RX
+		 * data-ready states so a combined ARDY|RRDY/RDR interrupt
+		 * cannot complete the transfer before payload bytes are copied.
+		 */
+		if (stat & OMAP_I2C_STAT_ARDY) {
+			omap_i2c_ack_stat(omap, OMAP_I2C_STAT_ARDY);
+			omap_i2c_ack_stat(omap, (OMAP_I2C_STAT_RRDY |
+						OMAP_I2C_STAT_RDR |
+						OMAP_I2C_STAT_XRDY |
+						OMAP_I2C_STAT_XDR |
+						OMAP_I2C_STAT_ARDY));
+			break;
 		}
 
 		if (!omap->receiver && (stat & OMAP_I2C_STAT_XDR)) {
