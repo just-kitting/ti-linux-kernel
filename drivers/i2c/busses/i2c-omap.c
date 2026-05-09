@@ -1172,9 +1172,21 @@ static bool omap_i2c_receive_data(struct omap_i2c_dev *omap, u8 num_bytes,
 	bool		recv_len_reprogrammed = false;
 
 	while (num_bytes--) {
+		size_t offset = 0;
+
 		w = omap_i2c_read_reg(omap, OMAP_I2C_DATA_REG);
 		*omap->buf++ = w;
 		omap->buf_len--;
+		if (omap->msg)
+			offset = omap->buf - omap->msg->buf;
+
+		if (omap->msg && omap->msg->flags & I2C_M_RECV_LEN)
+			dev_info_ratelimited(omap->dev,
+					     "recv-len byte value=%#02x offset=%zu buf_len=%zu cnt=%#04x bufstat=%#04x rdr=%u recv_len=%u\n",
+					     w & 0xff, offset, omap->buf_len,
+					     omap_i2c_read_reg(omap, OMAP_I2C_CNT_REG),
+					     omap_i2c_read_reg(omap, OMAP_I2C_BUFSTAT_REG),
+					     is_rdr, omap->recv_len);
 
 		if (omap->recv_len && omap->msg &&
 		    omap->buf == omap->msg->buf + 1) {
@@ -1182,6 +1194,10 @@ static bool omap_i2c_receive_data(struct omap_i2c_dev *omap, u8 num_bytes,
 			size_t remaining;
 
 			if (block_len == 0 || block_len > I2C_SMBUS_BLOCK_MAX) {
+				dev_info_ratelimited(omap->dev,
+						     "recv-len invalid count=%u extra=%u buf_len=%zu\n",
+						     block_len, omap->recv_len_extra,
+						     omap->buf_len);
 				omap->recv_len_err = -EPROTO;
 				omap->recv_len = false;
 				recv_len_reprogrammed = true;
@@ -1193,6 +1209,13 @@ static bool omap_i2c_receive_data(struct omap_i2c_dev *omap, u8 num_bytes,
 			omap->buf_len = remaining;
 			omap_i2c_resize_fifo(omap, remaining, true);
 			omap_i2c_write_reg(omap, OMAP_I2C_CNT_REG, remaining);
+			dev_info_ratelimited(omap->dev,
+					     "recv-len count=%u extra=%u remaining=%zu msg_len=%u cnt=%#04x threshold=%u bufstat=%#04x\n",
+					     block_len, omap->recv_len_extra,
+					     remaining, omap->msg->len,
+					     omap_i2c_read_reg(omap, OMAP_I2C_CNT_REG),
+					     omap->threshold,
+					     omap_i2c_read_reg(omap, OMAP_I2C_BUFSTAT_REG));
 			omap->recv_len = false;
 			recv_len_reprogrammed = true;
 			break;
@@ -1327,6 +1350,15 @@ static int omap_i2c_xfer_data(struct omap_i2c_dev *omap)
 					OMAP_I2C_BUFSTAT_REG) >> 8) & 0x3F;
 			}
 
+			if (omap->msg && omap->msg->flags & I2C_M_RECV_LEN)
+				dev_info_ratelimited(omap->dev,
+						     "recv-len RDR stat=%#04x num=%u buf_len=%zu cnt=%#04x threshold=%u bufstat=%#04x recv_len=%u\n",
+						     stat, num_bytes, omap->buf_len,
+						     omap_i2c_read_reg(omap, OMAP_I2C_CNT_REG),
+						     omap->threshold,
+						     omap_i2c_read_reg(omap, OMAP_I2C_BUFSTAT_REG),
+						     omap->recv_len);
+
 			recv_len_reprogrammed =
 				omap_i2c_receive_data(omap, num_bytes, true);
 			omap_i2c_ack_stat(omap, OMAP_I2C_STAT_RDR);
@@ -1345,6 +1377,15 @@ static int omap_i2c_xfer_data(struct omap_i2c_dev *omap)
 				num_bytes = 1;
 			else if (omap->threshold)
 				num_bytes = omap->threshold;
+
+			if (omap->msg && omap->msg->flags & I2C_M_RECV_LEN)
+				dev_info_ratelimited(omap->dev,
+						     "recv-len RRDY stat=%#04x num=%u buf_len=%zu cnt=%#04x threshold=%u bufstat=%#04x recv_len=%u\n",
+						     stat, num_bytes, omap->buf_len,
+						     omap_i2c_read_reg(omap, OMAP_I2C_CNT_REG),
+						     omap->threshold,
+						     omap_i2c_read_reg(omap, OMAP_I2C_BUFSTAT_REG),
+						     omap->recv_len);
 
 			recv_len_reprogrammed =
 				omap_i2c_receive_data(omap, num_bytes, false);
