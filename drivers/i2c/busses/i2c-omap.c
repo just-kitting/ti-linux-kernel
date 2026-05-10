@@ -1206,13 +1206,11 @@ static bool omap_i2c_receive_data(struct omap_i2c_dev *omap, u8 num_bytes,
 
 			remaining = block_len + omap->recv_len_extra;
 			omap->msg->len = 1 + remaining;
-			omap->buf_len = remaining;
-			omap_i2c_resize_fifo(omap, remaining, true);
-			omap_i2c_write_reg(omap, OMAP_I2C_CNT_REG, remaining);
 			dev_info_ratelimited(omap->dev,
-					     "recv-len count=%u extra=%u remaining=%zu msg_len=%u cnt=%#04x threshold=%u bufstat=%#04x\n",
+					     "recv-len count=%u extra=%u remaining=%zu msg_len=%u keep_buf_len=%zu cnt=%#04x threshold=%u bufstat=%#04x\n",
 					     block_len, omap->recv_len_extra,
 					     remaining, omap->msg->len,
+					     omap->buf_len,
 					     omap_i2c_read_reg(omap, OMAP_I2C_CNT_REG),
 					     omap->threshold,
 					     omap_i2c_read_reg(omap, OMAP_I2C_BUFSTAT_REG));
