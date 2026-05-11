@@ -178,6 +178,16 @@ enum {
 
 #define OMAP_I2C_IP_V2_INTERRUPTS_MASK	0x6FFF
 
+#define OMAP_I2C_SCHEME(rev)		((rev & 0xc000) >> 14)
+
+#define OMAP_I2C_REV_SCHEME_0_MAJOR(rev) (rev >> 4)
+#define OMAP_I2C_REV_SCHEME_0_MINOR(rev) (rev & 0xf)
+
+#define OMAP_I2C_REV_SCHEME_1_MAJOR(rev) ((rev & 0x0700) >> 7)
+#define OMAP_I2C_REV_SCHEME_1_MINOR(rev) (rev & 0x1f)
+#define OMAP_I2C_SCHEME_0		0
+#define OMAP_I2C_SCHEME_1		1
+
 struct omap_i2c_dev {
 	struct device		*dev;
 	void __iomem		*base;		/* virtual */
@@ -311,6 +321,19 @@ static inline u16 omap_i2c_read_reg(struct omap_i2c_dev *omap, int reg)
 				(omap->regs[reg] << omap->reg_shift));
 }
 
+static void omap_i2c_write_irqenable(struct omap_i2c_dev *omap, u16 mask)
+{
+	if (omap->scheme == OMAP_I2C_SCHEME_0) {
+		omap_i2c_write_reg(omap, OMAP_I2C_IE_REG, mask);
+		return;
+	}
+
+	omap_i2c_write_reg(omap, OMAP_I2C_IP_V2_IRQENABLE_CLR,
+			   OMAP_I2C_IP_V2_INTERRUPTS_MASK);
+	if (mask)
+		omap_i2c_write_reg(omap, OMAP_I2C_IE_REG, mask);
+}
+
 static void __omap_i2c_init(struct omap_i2c_dev *omap)
 {
 
@@ -339,7 +362,7 @@ static void __omap_i2c_init(struct omap_i2c_dev *omap)
 	 * cause deadlock.
 	 */
 	if (omap->iestate)
-		omap_i2c_write_reg(omap, OMAP_I2C_IE_REG, omap->iestate);
+		omap_i2c_write_irqenable(omap, omap->iestate);
 }
 
 static int omap_i2c_reset(struct omap_i2c_dev *omap)
@@ -935,7 +958,7 @@ static void omap_i2c_set_master_mode(struct omap_i2c_dev *omap)
 	u16 con;
 
 	omap->iestate = omap_i2c_master_irq_mask(omap);
-	omap_i2c_write_reg(omap, OMAP_I2C_IE_REG, omap->iestate);
+	omap_i2c_write_irqenable(omap, omap->iestate);
 	omap_i2c_ack_stat(omap, OMAP_I2C_STAT_AAS | OMAP_I2C_STAT_XRDY |
 			  OMAP_I2C_STAT_RRDY | OMAP_I2C_STAT_ARDY |
 			  OMAP_I2C_STAT_NACK | OMAP_I2C_STAT_AL |
@@ -992,7 +1015,7 @@ static void omap_i2c_restore_slave_listen(struct omap_i2c_dev *omap)
 			  OMAP_I2C_STAT_NACK | OMAP_I2C_STAT_AL |
 			  OMAP_I2C_STAT_XDR | OMAP_I2C_STAT_RDR |
 			  OMAP_I2C_STAT_ROVR | OMAP_I2C_STAT_XUDF);
-	omap_i2c_write_reg(omap, OMAP_I2C_IE_REG, omap->iestate);
+	omap_i2c_write_irqenable(omap, omap->iestate);
 }
 
 static void omap_i2c_slave_log_state(struct omap_i2c_dev *omap, const char *tag,
@@ -1600,7 +1623,7 @@ static int omap_i2c_reg_slave(struct i2c_client *slave)
 
 	dev_info(omap->dev, "slave register addr=%#x\n", slave->addr);
 	omap_i2c_restore_slave_listen(omap);
-	omap_i2c_write_reg(omap, OMAP_I2C_IE_REG, omap->iestate);
+	omap_i2c_write_irqenable(omap, omap->iestate);
 	omap_i2c_slave_log_state(omap, "listen", 0);
 
 	return 0;
@@ -1613,7 +1636,7 @@ static int omap_i2c_unreg_slave(struct i2c_client *slave)
 	WARN_ON(omap->slave != slave);
 
 	dev_info(omap->dev, "slave unregister addr=%#x\n", slave->addr);
-	omap_i2c_write_reg(omap, OMAP_I2C_IE_REG, 0);
+	omap_i2c_write_irqenable(omap, 0);
 	omap->slave = NULL;
 	omap->slave_read = false;
 	omap_i2c_init(omap);
@@ -1680,16 +1703,6 @@ static const struct of_device_id omap_i2c_of_match[] = {
 };
 MODULE_DEVICE_TABLE(of, omap_i2c_of_match);
 #endif
-
-#define OMAP_I2C_SCHEME(rev)		((rev & 0xc000) >> 14)
-
-#define OMAP_I2C_REV_SCHEME_0_MAJOR(rev) (rev >> 4)
-#define OMAP_I2C_REV_SCHEME_0_MINOR(rev) (rev & 0xf)
-
-#define OMAP_I2C_REV_SCHEME_1_MAJOR(rev) ((rev & 0x0700) >> 7)
-#define OMAP_I2C_REV_SCHEME_1_MINOR(rev) (rev & 0x1f)
-#define OMAP_I2C_SCHEME_0		0
-#define OMAP_I2C_SCHEME_1		1
 
 static int omap_i2c_get_scl(struct i2c_adapter *adap)
 {
