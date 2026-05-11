@@ -278,6 +278,26 @@ static void omap_i2c_slave_init_fifos(struct omap_i2c_dev *omap);
 static void omap_i2c_slave_log_state(struct omap_i2c_dev *omap, const char *tag,
 				     u16 stat);
 
+static u16 omap_i2c_master_irq_mask(struct omap_i2c_dev *omap)
+{
+	u16 mask = OMAP_I2C_IE_XRDY | OMAP_I2C_IE_RRDY |
+		   OMAP_I2C_IE_ARDY | OMAP_I2C_IE_NACK |
+		   OMAP_I2C_IE_AL;
+
+	if (omap->fifo_size)
+		mask |= OMAP_I2C_IE_RDR | OMAP_I2C_IE_XDR;
+
+	return mask;
+}
+
+static u16 omap_i2c_slave_irq_mask(void)
+{
+	return OMAP_I2C_IE_AAS | OMAP_I2C_IE_XRDY |
+	       OMAP_I2C_IE_XUDF | OMAP_I2C_IE_RRDY |
+	       OMAP_I2C_IE_ARDY | OMAP_I2C_IE_NACK |
+	       OMAP_I2C_IE_AL;
+}
+
 static inline void omap_i2c_write_reg(struct omap_i2c_dev *omap,
 				      int reg, u16 val)
 {
@@ -476,10 +496,7 @@ static int omap_i2c_init(struct omap_i2c_dev *omap)
 		sclh = fclk_rate / (omap->speed * 2) - 7 + psc;
 	}
 
-	omap->iestate = (OMAP_I2C_IE_XRDY | OMAP_I2C_IE_RRDY |
-			OMAP_I2C_IE_ARDY | OMAP_I2C_IE_NACK |
-			OMAP_I2C_IE_AL)  | ((omap->fifo_size) ?
-				(OMAP_I2C_IE_RDR | OMAP_I2C_IE_XDR) : 0);
+	omap->iestate = omap_i2c_master_irq_mask(omap);
 
 	omap->pscstate = psc;
 	omap->scllstate = scll;
@@ -917,6 +934,14 @@ static void omap_i2c_set_master_mode(struct omap_i2c_dev *omap)
 {
 	u16 con;
 
+	omap->iestate = omap_i2c_master_irq_mask(omap);
+	omap_i2c_write_reg(omap, OMAP_I2C_IE_REG, omap->iestate);
+	omap_i2c_ack_stat(omap, OMAP_I2C_STAT_AAS | OMAP_I2C_STAT_XRDY |
+			  OMAP_I2C_STAT_RRDY | OMAP_I2C_STAT_ARDY |
+			  OMAP_I2C_STAT_NACK | OMAP_I2C_STAT_AL |
+			  OMAP_I2C_STAT_XDR | OMAP_I2C_STAT_RDR |
+			  OMAP_I2C_STAT_ROVR | OMAP_I2C_STAT_XUDF);
+
 	con = omap_i2c_read_reg(omap, OMAP_I2C_CON_REG);
 	con |= OMAP_I2C_CON_MST;
 	omap_i2c_write_reg(omap, OMAP_I2C_CON_REG, con);
@@ -958,6 +983,7 @@ static void omap_i2c_restore_slave_listen(struct omap_i2c_dev *omap)
 
 	omap->slave_read = false;
 	omap->slave_write = false;
+	omap->iestate = omap_i2c_slave_irq_mask();
 	omap_i2c_slave_init_fifos(omap);
 	omap_i2c_write_reg(omap, OMAP_I2C_OA_REG, omap->slave->addr);
 	omap_i2c_set_slave_mode(omap);
@@ -966,6 +992,7 @@ static void omap_i2c_restore_slave_listen(struct omap_i2c_dev *omap)
 			  OMAP_I2C_STAT_NACK | OMAP_I2C_STAT_AL |
 			  OMAP_I2C_STAT_XDR | OMAP_I2C_STAT_RDR |
 			  OMAP_I2C_STAT_ROVR | OMAP_I2C_STAT_XUDF);
+	omap_i2c_write_reg(omap, OMAP_I2C_IE_REG, omap->iestate);
 }
 
 static void omap_i2c_slave_log_state(struct omap_i2c_dev *omap, const char *tag,
@@ -1569,10 +1596,7 @@ static int omap_i2c_reg_slave(struct i2c_client *slave)
 
 	omap->slave = slave;
 	omap->slave_read = false;
-	omap->iestate = OMAP_I2C_IE_AAS | OMAP_I2C_IE_XRDY |
-			OMAP_I2C_IE_XUDF |
-			OMAP_I2C_IE_RRDY | OMAP_I2C_IE_ARDY |
-			OMAP_I2C_IE_NACK | OMAP_I2C_IE_AL;
+	omap->iestate = omap_i2c_slave_irq_mask();
 
 	dev_info(omap->dev, "slave register addr=%#x\n", slave->addr);
 	omap_i2c_restore_slave_listen(omap);
