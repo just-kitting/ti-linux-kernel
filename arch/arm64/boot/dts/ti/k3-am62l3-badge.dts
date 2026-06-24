@@ -270,6 +270,13 @@
 		>;
 	};
 
+	grove_signal_default_pins: grove-signal-default-pins {
+		pinctrl-single,pins = <
+			AM62LX_IOPAD(0x00a8, PIN_INPUT, 7) /* (G23) GPMC0_AD12.GPIO0_27 | Grove signal 1 */
+			AM62LX_IOPAD(0x00ac, PIN_INPUT, 7) /* (G22) GPMC0_AD13.GPIO0_28 | Grove signal 2 */
+		>;
+	};
+
 	vdd_3v3_sd_ena_default_pins: vdd-3v3-sd-ena-default-pins {
 		pinctrl-single,pins = <
 			AM62LX_IOPAD(0x07c, PIN_OUTPUT, 7) /* (L23) GPMC0_AD1.GPIO0_16 */
@@ -554,12 +561,12 @@
 
 &main_gpio0 {
 	pinctrl-names = "default";
-	pinctrl-0 = <&lora_control_pins_default>;
+	pinctrl-0 = <&lora_control_pins_default &grove_signal_default_pins>;
 	status = "okay";
 	bootph-all;
 	gpio-line-names ="","","","","","","","","","", //GPIO0_0->9
 			 "","","","","","","vdd_3v3_sd_ena","","","", //GPIO0_10->19
-			 "","","","","","mcp23s18_reset","button_select","","","", //GPIO0_20->29
+			 "","","","","","mcp23s18_reset","button_select","grove_sig1","grove_sig2","", //GPIO0_20->29
 			 "","button_left","button_up","","lora_reset","","","","","", //GPIO0_30->39
 			 "","lora_rfsw","button_down","","","","","","","", //GPIO0_40->49
 			 "","wlan_ena","","","","","","","","", //GPIO0_50->59
